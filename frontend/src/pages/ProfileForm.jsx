@@ -30,6 +30,8 @@ export default function ProfileForm() {
   return (
     <div className="p-6 max-w-2xl mx-auto">
       <h2 className="text-2xl font-bold mb-4">Learning Style Questionnaire</h2>
+      <div className="text-3xl font-bold text-green-600">Tailwind is working!</div>
+
       {questions.map((q, i) => (
         <div key={i} className="mb-4">
           <p className="font-medium">{q.q}</p>
