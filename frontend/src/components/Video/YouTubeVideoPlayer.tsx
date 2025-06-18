@@ -16,6 +16,7 @@ export function YouTubeVideoPlayer() {
   const [showSettings, setShowSettings] = useState(false);
   const [analytics, setAnalytics] = useState<YouTubeAnalytics | null>(null);
   const [realTimeInsights, setRealTimeInsights] = useState<string[]>([]);
+  const [isPlayerReady, setIsPlayerReady] = useState(false);
   
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const youtubeServiceRef = useRef<YouTubeService | null>(null);
@@ -36,11 +37,15 @@ export function YouTubeVideoPlayer() {
       if (progressUpdateRef.current) {
         clearInterval(progressUpdateRef.current);
       }
+      setIsPlayerReady(false);
     };
   }, [video]);
 
   const initializeYouTubePlayer = async () => {
     if (!video || !playerContainerRef.current) return;
+
+    // Reset player ready state
+    setIsPlayerReady(false);
 
     // Extract YouTube video ID from URL or use the video ID directly
     const videoId = extractYouTubeVideoId(video.videoUrl) || video.id;
@@ -67,10 +72,14 @@ export function YouTubeVideoPlayer() {
         },
       });
 
+      // Set player as ready after successful initialization
+      setIsPlayerReady(true);
+
       // Start progress tracking
       startProgressTracking();
     } catch (error) {
       console.error('Failed to initialize YouTube player:', error);
+      setIsPlayerReady(false);
     }
   };
 
@@ -82,7 +91,7 @@ export function YouTubeVideoPlayer() {
 
   const startProgressTracking = () => {
     progressUpdateRef.current = setInterval(() => {
-      if (youtubeServiceRef.current) {
+      if (youtubeServiceRef.current && isPlayerReady) {
         const current = youtubeServiceRef.current.getCurrentTime();
         const total = youtubeServiceRef.current.getDuration();
         
@@ -143,8 +152,10 @@ export function YouTubeVideoPlayer() {
 
     if (shouldShowQuiz) {
       setShowQuiz(true);
-      youtubeServiceRef.current?.pause();
-      setIsPlaying(false);
+      if (youtubeServiceRef.current && isPlayerReady) {
+        youtubeServiceRef.current.pause();
+        setIsPlaying(false);
+      }
     }
   };
 
@@ -174,7 +185,7 @@ export function YouTubeVideoPlayer() {
   };
 
   const togglePlay = () => {
-    if (!youtubeServiceRef.current) return;
+    if (!youtubeServiceRef.current || !isPlayerReady) return;
 
     if (isPlaying) {
       youtubeServiceRef.current.pause();
@@ -185,20 +196,22 @@ export function YouTubeVideoPlayer() {
   };
 
   const handleSeek = (seconds: number) => {
-    if (!youtubeServiceRef.current) return;
+    if (!youtubeServiceRef.current || !isPlayerReady) return;
     youtubeServiceRef.current.seekTo(seconds);
   };
 
   const handlePlaybackRateChange = (rate: number) => {
-    if (!youtubeServiceRef.current) return;
+    if (!youtubeServiceRef.current || !isPlayerReady) return;
     youtubeServiceRef.current.setPlaybackRate(rate);
     setPlaybackRate(rate);
   };
 
   const handleQuizSubmit = () => {
     setShowQuiz(false);
-    youtubeServiceRef.current?.play();
-    setIsPlaying(true);
+    if (youtubeServiceRef.current && isPlayerReady) {
+      youtubeServiceRef.current.play();
+      setIsPlaying(true);
+    }
   };
 
   const formatTime = (seconds: number) => {
@@ -235,6 +248,16 @@ export function YouTubeVideoPlayer() {
           {/* YouTube Player */}
           <div id="youtube-player" className="w-full h-full"></div>
 
+          {/* Player Loading Indicator */}
+          {!isPlayerReady && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+              <div className="text-white text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+                <p>Loading player...</p>
+              </div>
+            </div>
+          )}
+
           {/* Custom Video Controls Overlay */}
           <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4">
             {/* Progress Bar */}
@@ -243,6 +266,7 @@ export function YouTubeVideoPlayer() {
                 <span>{formatTime(currentTime)}</span>
                 <div className="flex-1 bg-white/20 rounded-full h-2 cursor-pointer"
                      onClick={(e) => {
+                       if (!isPlayerReady) return;
                        const rect = e.currentTarget.getBoundingClientRect();
                        const percent = (e.clientX - rect.left) / rect.width;
                        handleSeek(percent * duration);
@@ -261,14 +285,16 @@ export function YouTubeVideoPlayer() {
               <div className="flex items-center space-x-4">
                 <button
                   onClick={() => handleSeek(Math.max(0, currentTime - 10))}
-                  className="p-2 bg-white/20 hover:bg-white/30 rounded-full transition-colors"
+                  disabled={!isPlayerReady}
+                  className="p-2 bg-white/20 hover:bg-white/30 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <SkipBack className="h-5 w-5 text-white" />
                 </button>
 
                 <button
                   onClick={togglePlay}
-                  className="p-3 bg-red-600 hover:bg-red-700 rounded-full transition-colors"
+                  disabled={!isPlayerReady}
+                  className="p-3 bg-red-600 hover:bg-red-700 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isPlaying ? (
                     <Pause className="h-6 w-6 text-white" />
@@ -279,7 +305,8 @@ export function YouTubeVideoPlayer() {
 
                 <button
                   onClick={() => handleSeek(Math.min(duration, currentTime + 10))}
-                  className="p-2 bg-white/20 hover:bg-white/30 rounded-full transition-colors"
+                  disabled={!isPlayerReady}
+                  className="p-2 bg-white/20 hover:bg-white/30 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <SkipForward className="h-5 w-5 text-white" />
                 </button>
@@ -292,7 +319,8 @@ export function YouTubeVideoPlayer() {
                     max="100"
                     value={volume}
                     onChange={(e) => setVolume(Number(e.target.value))}
-                    className="w-20 accent-red-600"
+                    disabled={!isPlayerReady}
+                    className="w-20 accent-red-600 disabled:opacity-50"
                   />
                 </div>
               </div>
@@ -302,13 +330,14 @@ export function YouTubeVideoPlayer() {
                 <div className="relative">
                   <button
                     onClick={() => setShowSettings(!showSettings)}
-                    className="p-2 text-white/80 hover:text-white transition-colors flex items-center space-x-1"
+                    disabled={!isPlayerReady}
+                    className="p-2 text-white/80 hover:text-white transition-colors flex items-center space-x-1 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Gauge className="h-5 w-5" />
                     <span className="text-sm">{playbackRate}x</span>
                   </button>
                   
-                  {showSettings && (
+                  {showSettings && isPlayerReady && (
                     <div className="absolute bottom-full right-0 mb-2 bg-black/90 rounded-lg p-2 min-w-[120px]">
                       <div className="text-white text-sm font-medium mb-2">Playback Speed</div>
                       {[0.5, 0.75, 1, 1.25, 1.5, 2].map((rate) => (
@@ -329,10 +358,16 @@ export function YouTubeVideoPlayer() {
                   )}
                 </div>
 
-                <button className="p-2 text-white/80 hover:text-white transition-colors">
+                <button 
+                  disabled={!isPlayerReady}
+                  className="p-2 text-white/80 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
                   <Settings className="h-5 w-5" />
                 </button>
-                <button className="p-2 text-white/80 hover:text-white transition-colors">
+                <button 
+                  disabled={!isPlayerReady}
+                  className="p-2 text-white/80 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
                   <Maximize className="h-5 w-5" />
                 </button>
               </div>
