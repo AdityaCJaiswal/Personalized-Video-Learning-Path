@@ -1,5 +1,4 @@
 import { useState } from 'react';
-
 const questions = [
   { q: "How do you prefer to learn?", options: ["video", "text", "audio"] },
   { q: "How do you revise best?", options: ["diagram", "quiz", "lecture"] },
@@ -10,6 +9,7 @@ const questions = [
 export default function ProfileForm() {
   const [answers, setAnswers] = useState(Array(questions.length).fill(""));
   const [profile, setProfile] = useState("");
+const [videos, setVideos] = useState([]);
 
   const handleChange = (index, value) => {
     const newAnswers = [...answers];
@@ -25,6 +25,11 @@ export default function ProfileForm() {
     });
     const data = await res.json();
     setProfile(data.profile);
+
+    const videoRes = await fetch(`http://localhost:5000/api/videos?profile=${data.profile}`);
+const videos = await videoRes.json();
+setVideos(videos);
+
   };
 
   return (
@@ -63,6 +68,26 @@ export default function ProfileForm() {
           Your learning style is: <strong>{profile}</strong>
         </div>
       )}
+
+      {videos.length > 0 && (
+  <div className="mt-6">
+    <h3 className="text-xl font-semibold mb-2">Recommended Videos:</h3>
+    <div className="grid gap-4">
+      {videos.map((video) => (
+        <div key={video.id} className="border p-4 rounded bg-white shadow">
+          <h4 className="font-medium mb-2">{video.title}</h4>
+          <iframe
+            src={video.url}
+            className="w-full h-64"
+            title={video.title}
+            allowFullScreen
+          ></iframe>
+        </div>
+      ))}
+    </div>
+  </div>
+)}
+
     </div>
   );
 }

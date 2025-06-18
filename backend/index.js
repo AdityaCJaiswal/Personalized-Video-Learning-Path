@@ -28,6 +28,40 @@ app.post('/api/profile', (req, res) => {
   return res.json({ profile });
 });
 
+const mockVideos = [
+  {
+    id: 1,
+    title: "Learn React Visually",
+    url: "https://www.youtube.com/embed/Tn6-PIqc4UM",
+    type: "visual",
+  },
+  {
+    id: 2,
+    title: "Logical Explanation of Algorithms",
+    url: "https://www.youtube.com/embed/B31LgI4Y4DQ",
+    type: "logical",
+  },
+  {
+    id: 3,
+    title: "Auditory Learning with Podcasts",
+    url: "https://www.youtube.com/embed/--KhqFg9F3Q",
+    type: "auditory",
+  },
+  {
+    id: 4,
+    title: "Animations to Understand JavaScript",
+    url: "https://www.youtube.com/embed/o1IaduQICO0",
+    type: "visual",
+  },
+];
+
+app.get('/api/videos', (req, res) => {
+  const profile = req.query.profile;
+  const recommended = mockVideos.filter(video => video.type === profile);
+  res.json(recommended);
+});
+
+
 app.listen(PORT, () => {
   console.log(`✅ Backend running on http://localhost:${PORT}`);
 });
