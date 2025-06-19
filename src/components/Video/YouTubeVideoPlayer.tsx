@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Play, Pause, Volume2, Settings, Maximize, RotateCcw, CheckCircle, SkipBack, SkipForward, Gauge, Clock } from 'lucide-react';
 import { useLearning } from '../../context/LearningContext';
-import { InteractiveLearningTree } from '../LearningTree/InteractiveLearningTree';
+import { PersonalizedLearningTree } from '../LearningTree/PersonalizedLearningTree';
 import { YouTubeService } from '../../services/youtubeService';
 
 export function YouTubeVideoPlayer() {
@@ -16,6 +16,7 @@ export function YouTubeVideoPlayer() {
   const [isPlayerReady, setIsPlayerReady] = useState(false);
   const [playerError, setPlayerError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [currentCourse, setCurrentCourse] = useState<string | undefined>();
   
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const youtubeServiceRef = useRef<YouTubeService | null>(null);
@@ -27,19 +28,31 @@ export function YouTubeVideoPlayer() {
     window.dispatchEvent(new CustomEvent('videoSelect', { detail: { videoId } }));
   };
 
+  // Determine current course based on the video
+  useEffect(() => {
+    if (video) {
+      // Import courses to find which course this video belongs to
+      import('../../data/courseData').then(({ courses }) => {
+        const course = courses.find(c => 
+          c.learningPath.some(node => 
+            node.videoIds.includes(video.id)
+          )
+        );
+        setCurrentCourse(course?.id);
+      });
+    }
+  }, [video]);
+
   // Initialize YouTube service
   useEffect(() => {
     youtubeServiceRef.current = new YouTubeService(
       (analytics) => {
-        // Handle analytics updates
         console.log('Analytics updated:', analytics);
       },
       (interaction) => {
-        // Handle interactions
         console.log('Interaction:', interaction);
       },
       () => {
-        // Player ready callback
         console.log('Player is ready');
         setIsPlayerReady(true);
         setPlayerError(null);
@@ -52,7 +65,6 @@ export function YouTubeVideoPlayer() {
         }
       },
       (error) => {
-        // Player error callback
         console.error('Player error:', error);
         setPlayerError(error);
         setIsPlayerReady(false);
@@ -61,7 +73,6 @@ export function YouTubeVideoPlayer() {
     );
 
     return () => {
-      // Cleanup
       if (youtubeServiceRef.current) {
         youtubeServiceRef.current.destroyPlayer();
       }
@@ -85,15 +96,13 @@ export function YouTubeVideoPlayer() {
   }, [video]);
 
   const extractYouTubeVideoId = (url: string): string | null => {
-    // If it's already just a video ID (11 characters), return it
     if (/^[a-zA-Z0-9_-]{11}$/.test(url)) {
       return url;
     }
 
-    // Handle various YouTube URL formats
     const patterns = [
       /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^#&?]*)/,
-      /^([a-zA-Z0-9_-]{11})$/ // Direct video ID
+      /^([a-zA-Z0-9_-]{11})$/
     ];
     
     for (const pattern of patterns) {
@@ -116,10 +125,8 @@ export function YouTubeVideoPlayer() {
     setPlayerError(null);
 
     try {
-      // Extract YouTube video ID
       let videoId = extractYouTubeVideoId(video.videoUrl);
       
-      // Fallback to video.id if URL extraction fails
       if (!videoId) {
         videoId = video.id;
       }
@@ -130,7 +137,6 @@ export function YouTubeVideoPlayer() {
 
       console.log('Initializing player with video ID:', videoId);
 
-      // Create player using the service
       await youtubeServiceRef.current.createPlayer(playerContainerRef.current, videoId, {
         height: '100%',
         width: '100%',
@@ -159,7 +165,6 @@ export function YouTubeVideoPlayer() {
           setDuration(total);
           setIsPlaying(playerState === window.YT?.PlayerState?.PLAYING);
 
-          // Check for quiz triggers
           checkQuizTriggers(current, total);
         } catch (error) {
           console.warn('Error updating progress:', error);
@@ -254,7 +259,7 @@ export function YouTubeVideoPlayer() {
         </div>
         
         <div className="w-80 border-l border-gray-200 bg-white p-4">
-          <InteractiveLearningTree onVideoSelect={handleVideoSelect} />
+          <PersonalizedLearningTree onVideoSelect={handleVideoSelect} />
         </div>
       </div>
     );
@@ -459,9 +464,13 @@ export function YouTubeVideoPlayer() {
         </div>
       </div>
 
-      {/* Right Sidebar - Interactive Learning Tree */}
+      {/* Right Sidebar - Personalized Learning Tree with Course Context */}
       <div className="w-80 border-l border-gray-200 bg-white p-4">
-        <InteractiveLearningTree onVideoSelect={handleVideoSelect} isCompact />
+        <PersonalizedLearningTree 
+          onVideoSelect={handleVideoSelect} 
+          isCompact 
+          selectedCourse={currentCourse}
+        />
       </div>
 
       {/* Quiz Modal */}

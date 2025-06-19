@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Play, Clock, Target, TrendingUp, Star, BookOpen, Award, ChevronRight } from 'lucide-react';
+import { Play, Clock, Target, TrendingUp, Star, BookOpen, Award, ChevronRight, Wifi, WifiOff } from 'lucide-react';
 import { useLearning } from '../../context/LearningContext';
 import { PersonalizedLearningEngine } from '../../services/personalizedLearningEngine';
 import { getCoursesForUser, getRecommendedCourses, getEnrolledCourses } from '../../data/courseData';
 import { mockVideoLibrary, generateMockRecommendations } from '../../data/mockData';
+import { apiService } from '../../services/apiService';
 
 interface PersonalizedDashboardProps {
   onVideoSelect: (videoId: string) => void;
@@ -16,41 +17,79 @@ export function PersonalizedDashboard({ onVideoSelect, onCourseSelect }: Persona
   const [enrolledCourses, setEnrolledCourses] = useState<any[]>([]);
   const [availableCourses, setAvailableCourses] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [backendStatus, setBackendStatus] = useState<'connected' | 'disconnected' | 'testing'>('testing');
 
   useEffect(() => {
     if (state.currentProfile) {
       console.log('Profile available, generating content...', state.currentProfile);
-      generateDashboardContent();
+      testBackendAndGenerateContent();
     }
   }, [state.currentProfile, state.watchHistory, dispatch]);
 
-  const generateDashboardContent = async () => {
+  const testBackendAndGenerateContent = async () => {
     if (!state.currentProfile) return;
 
     setIsLoading(true);
+    setBackendStatus('testing');
     
+    try {
+      // Test backend connection
+      const connectionTest = await apiService.testConnection();
+      
+      if (connectionTest.success) {
+        console.log('✅ Backend connected successfully!');
+        setBackendStatus('connected');
+        
+        // Try to get recommendations from backend
+        try {
+          const backendRecommendations = await apiService.getRecommendations(state.currentProfile.id);
+          console.log('Backend recommendations:', backendRecommendations);
+          
+          if (backendRecommendations.success && backendRecommendations.data) {
+            setRecommendations(backendRecommendations.data);
+            dispatch({ type: 'UPDATE_RECOMMENDATIONS', payload: backendRecommendations.data });
+          } else {
+            throw new Error('No recommendations from backend');
+          }
+        } catch (error) {
+          console.log('Backend recommendations failed, using mock data:', error);
+          generateMockContent();
+        }
+      } else {
+        throw new Error('Backend connection failed');
+      }
+    } catch (error) {
+      console.log('❌ Backend not available, using mock data:', error);
+      setBackendStatus('disconnected');
+      generateMockContent();
+    }
+  };
+
+  const generateMockContent = () => {
+    if (!state.currentProfile) return;
+
     try {
       // Generate recommendations
       const mockRecs = generateMockRecommendations(state.currentProfile);
-      console.log('Generated recommendations:', mockRecs);
+      console.log('Generated mock recommendations:', mockRecs);
       setRecommendations(mockRecs);
       dispatch({ type: 'UPDATE_RECOMMENDATIONS', payload: mockRecs });
 
-      // Get enrolled courses (courses user has started or matches their assessment)
+      // Get enrolled courses
       const enrolledCourseIds = getEnrolledCourses(state.currentProfile, state.watchHistory);
       const userCourses = getCoursesForUser(state.currentProfile);
       const enrolled = userCourses.filter(course => enrolledCourseIds.includes(course.id));
       console.log('Enrolled courses:', enrolled);
       setEnrolledCourses(enrolled);
 
-      // Get available courses (not yet enrolled)
+      // Get available courses
       const allRecommended = getRecommendedCourses(state.currentProfile);
       const available = allRecommended.filter(course => !enrolledCourseIds.includes(course.id));
       console.log('Available courses:', available);
       setAvailableCourses(available);
 
     } catch (error) {
-      console.error('Error generating dashboard content:', error);
+      console.error('Error generating mock content:', error);
     } finally {
       setIsLoading(false);
     }
@@ -89,14 +128,40 @@ export function PersonalizedDashboard({ onVideoSelect, onCourseSelect }: Persona
 
   return (
     <div className="max-w-7xl mx-auto p-6">
-      {/* Welcome Section */}
+      {/* Welcome Section with Backend Status */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">
-          Welcome back, {state.currentProfile.name}!
-        </h1>
-        <p className="text-gray-600">
-          Continue your personalized learning journey. You're on a {state.currentProfile.progress.streakDays} day streak!
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">
+              Welcome back, {state.currentProfile.name}!
+            </h1>
+            <p className="text-gray-600">
+              Continue your personalized learning journey. You're on a {state.currentProfile.progress.streakDays} day streak!
+            </p>
+          </div>
+          
+          {/* Backend Status Indicator */}
+          <div className="flex items-center space-x-2">
+            {backendStatus === 'connected' && (
+              <>
+                <Wifi className="h-5 w-5 text-green-500" />
+                <span className="text-sm text-green-600 font-medium">Backend Connected</span>
+              </>
+            )}
+            {backendStatus === 'disconnected' && (
+              <>
+                <WifiOff className="h-5 w-5 text-orange-500" />
+                <span className="text-sm text-orange-600 font-medium">Demo Mode</span>
+              </>
+            )}
+            {backendStatus === 'testing' && (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                <span className="text-sm text-blue-600 font-medium">Connecting...</span>
+              </>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Loading State */}
@@ -169,7 +234,14 @@ export function PersonalizedDashboard({ onVideoSelect, onCourseSelect }: Persona
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-bold text-gray-900">Recommended for You</h2>
-              <span className="text-sm text-gray-500">AI-powered suggestions</span>
+              <div className="flex items-center space-x-2">
+                {backendStatus === 'connected' && (
+                  <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">AI-powered</span>
+                )}
+                <span className="text-sm text-gray-500">
+                  {backendStatus === 'connected' ? 'Live recommendations' : 'Demo suggestions'}
+                </span>
+              </div>
             </div>
             
             {recommendations.length > 0 ? (
@@ -309,13 +381,19 @@ export function PersonalizedDashboard({ onVideoSelect, onCourseSelect }: Persona
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Streak</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {state.currentProfile.progress.streakDays}
+                  <p className="text-sm text-gray-600">Backend Status</p>
+                  <p className="text-lg font-bold text-gray-900">
+                    {backendStatus === 'connected' ? 'Live' : 'Demo'}
                   </p>
                 </div>
-                <div className="p-3 bg-orange-100 rounded-lg">
-                  <TrendingUp className="h-6 w-6 text-orange-600" />
+                <div className={`p-3 rounded-lg ${
+                  backendStatus === 'connected' ? 'bg-green-100' : 'bg-orange-100'
+                }`}>
+                  {backendStatus === 'connected' ? (
+                    <Wifi className="h-6 w-6 text-green-600" />
+                  ) : (
+                    <WifiOff className="h-6 w-6 text-orange-600" />
+                  )}
                 </div>
               </div>
             </div>

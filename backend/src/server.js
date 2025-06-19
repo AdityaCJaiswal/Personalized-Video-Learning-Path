@@ -14,7 +14,7 @@ const app = express();
 // Security middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: process.env.FRONTEND_URL || '*',
   credentials: true
 }));
 
@@ -34,7 +34,21 @@ app.get('/health', (req, res) => {
   res.status(200).json({ 
     status: 'OK', 
     timestamp: new Date().toISOString(),
-    uptime: process.uptime()
+    uptime: process.uptime(),
+    service: 'learning-platform-backend',
+    version: '1.0.0'
+  });
+});
+
+// Root endpoint
+app.get('/', (req, res) => {
+  res.status(200).json({
+    message: 'Learning Platform Backend API',
+    status: 'running',
+    endpoints: {
+      health: '/health',
+      recommendations: '/api/recommendations'
+    }
   });
 });
 
@@ -43,13 +57,17 @@ app.use('/api/recommendations', recommendationRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {
-  res.status(404).json({ error: 'Route not found' });
+  res.status(404).json({ 
+    error: 'Route not found',
+    path: req.originalUrl,
+    method: req.method
+  });
 });
 
 // Error handling middleware
 app.use(errorHandler);
 
-const PORT = config.port || 3001;
+const PORT = process.env.PORT || 3001;
 
 // Initialize connections and start server
 const startServer = async () => {
@@ -63,9 +81,10 @@ const startServer = async () => {
     logger.info('Cache service connected successfully');
     
     // Start server
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
       logger.info(`Server running on port ${PORT}`);
       logger.info(`Environment: ${config.nodeEnv}`);
+      logger.info(`Health check: http://localhost:${PORT}/health`);
     });
   } catch (error) {
     logger.error('Failed to start server:', error.message);
