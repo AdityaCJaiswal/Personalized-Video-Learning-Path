@@ -27,6 +27,9 @@ export interface YouTubeAnalytics {
 }
 
 export class YouTubeService {
+  private static apiLoadPromise: Promise<void> | null = null;
+  private static isApiLoaded = false;
+  
   private player: any = null;
   private sessionData: Partial<WatchSession> = {};
   private interactions: Interaction[] = [];
@@ -44,15 +47,85 @@ export class YouTubeService {
 
   private onStateChangeCallback?: (analytics: YouTubeAnalytics) => void;
   private onInteractionCallback?: (interaction: Interaction) => void;
+  private onPlayerReadyCallback?: () => void;
+  private onPlayerErrorCallback?: (error: string) => void;
+  private progressInterval?: NodeJS.Timeout;
 
   constructor(
     onStateChange?: (analytics: YouTubeAnalytics) => void,
-    onInteraction?: (interaction: Interaction) => void
+    onInteraction?: (interaction: Interaction) => void,
+    onPlayerReady?: () => void,
+    onPlayerError?: (error: string) => void
   ) {
     this.onStateChangeCallback = onStateChange;
     this.onInteractionCallback = onInteraction;
-    this.initializeYouTubeAPI();
+    this.onPlayerReadyCallback = onPlayerReady;
+    this.onPlayerErrorCallback = onPlayerError;
     this.setupBehaviorTracking();
+  }
+
+  // Static method to ensure YouTube API is loaded
+  static async ensureAPILoaded(): Promise<void> {
+    if (YouTubeService.isApiLoaded) {
+      return Promise.resolve();
+    }
+
+    if (YouTubeService.apiLoadPromise) {
+      return YouTubeService.apiLoadPromise;
+    }
+
+    YouTubeService.apiLoadPromise = new Promise<void>((resolve, reject) => {
+      // Check if API is already loaded
+      if (window.YT && window.YT.Player) {
+        YouTubeService.isApiLoaded = true;
+        resolve();
+        return;
+      }
+
+      // Set up the callback for when API loads
+      window.onYouTubeIframeAPIReady = () => {
+        console.log('YouTube API loaded via callback');
+        YouTubeService.isApiLoaded = true;
+        resolve();
+      };
+
+      // Load the API script if not already present
+      if (!document.querySelector('script[src*="youtube.com/iframe_api"]')) {
+        console.log('Loading YouTube API script');
+        const script = document.createElement('script');
+        script.src = 'https://www.youtube.com/iframe_api';
+        script.async = true;
+        
+        script.onload = () => {
+          console.log('YouTube API script loaded');
+          // Fallback in case onYouTubeIframeAPIReady doesn't fire
+          setTimeout(() => {
+            if (window.YT && window.YT.Player) {
+              console.log('YouTube API ready via script onload');
+              YouTubeService.isApiLoaded = true;
+              resolve();
+            }
+          }, 1000);
+        };
+        
+        script.onerror = () => {
+          console.error('Failed to load YouTube API script');
+          reject(new Error('Failed to load YouTube API'));
+        };
+        
+        document.head.appendChild(script);
+      }
+
+      // Timeout fallback
+      setTimeout(() => {
+        if (!YouTubeService.isApiLoaded) {
+          console.error('YouTube API failed to load within timeout');
+          reject(new Error('YouTube API timeout'));
+        }
+      }, 15000);
+    });
+
+    return YouTubeService.apiLoadPromise;
   }
 
   private initializeAnalytics(): YouTubeAnalytics {
@@ -70,20 +143,6 @@ export class YouTubeService {
         strugglingSegments: [],
         masteredSegments: [],
       },
-    };
-  }
-
-  private initializeYouTubeAPI() {
-    // Load YouTube IFrame API
-    if (!window.YT) {
-      const tag = document.createElement('script');
-      tag.src = 'https://www.youtube.com/iframe_api';
-      const firstScriptTag = document.getElementsByTagName('script')[0];
-      firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
-    }
-
-    window.onYouTubeIframeAPIReady = () => {
-      console.log('YouTube API Ready');
     };
   }
 
@@ -124,44 +183,107 @@ export class YouTubeService {
     document.addEventListener('keypress', resetIdleTimer);
   }
 
-  createPlayer(elementId: string, videoId: string, options: any = {}) {
-    return new Promise((resolve, reject) => {
-      if (!window.YT || !window.YT.Player) {
-        setTimeout(() => this.createPlayer(elementId, videoId, options), 100);
-        return;
+  async createPlayer(containerElement: HTMLElement, videoId: string, options: any = {}): Promise<any> {
+    try {
+      // Ensure API is loaded first
+      await YouTubeService.ensureAPILoaded();
+
+      // Generate unique ID for the container if it doesn't have one
+      if (!containerElement.id) {
+        containerElement.id = `youtube-player-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       }
 
-      this.player = new window.YT.Player(elementId, {
-        height: options.height || '390',
-        width: options.width || '640',
-        videoId: videoId,
-        playerVars: {
-          autoplay: 0,
-          controls: 0, // Hide default controls to use our custom UI
-          disablekb: 1, // Disable keyboard controls
-          fs: 0, // Disable fullscreen
-          iv_load_policy: 3, // Hide annotations
-          modestbranding: 1, // Minimal YouTube branding
-          playsinline: 1,
-          rel: 0, // Don't show related videos
-          showinfo: 0, // Hide video info
-          ...options.playerVars,
-        },
-        events: {
-          onReady: (event: any) => {
-            this.onPlayerReady(event);
-            resolve(this.player);
-          },
-          onStateChange: this.onPlayerStateChange.bind(this),
-          onPlaybackQualityChange: this.onPlaybackQualityChange.bind(this),
-          onPlaybackRateChange: this.onPlaybackRateChange.bind(this),
-          onError: (event: any) => {
-            console.error('YouTube Player Error:', event);
-            reject(event);
-          },
-        },
+      // Destroy existing player if any
+      this.destroyPlayer();
+
+      console.log('Creating YouTube player with video ID:', videoId);
+
+      return new Promise((resolve, reject) => {
+        try {
+          this.player = new window.YT.Player(containerElement.id, {
+            height: options.height || '100%',
+            width: options.width || '100%',
+            videoId: videoId,
+            playerVars: {
+              autoplay: 0,
+              controls: 0,
+              disablekb: 1,
+              fs: 0,
+              iv_load_policy: 3,
+              modestbranding: 1,
+              playsinline: 1,
+              rel: 0,
+              showinfo: 0,
+              origin: window.location.origin,
+              enablejsapi: 1,
+              ...options.playerVars,
+            },
+            events: {
+              onReady: (event: any) => {
+                console.log('Player ready');
+                this.onPlayerReady(event);
+                if (this.onPlayerReadyCallback) {
+                  this.onPlayerReadyCallback();
+                }
+                resolve(this.player);
+              },
+              onStateChange: this.onPlayerStateChange.bind(this),
+              onPlaybackQualityChange: this.onPlaybackQualityChange.bind(this),
+              onPlaybackRateChange: this.onPlaybackRateChange.bind(this),
+              onError: (event: any) => {
+                console.error('YouTube Player Error:', event);
+                const errorMessage = this.getErrorMessage(event.data);
+                if (this.onPlayerErrorCallback) {
+                  this.onPlayerErrorCallback(errorMessage);
+                }
+                reject(new Error(errorMessage));
+              },
+            },
+          });
+        } catch (error) {
+          console.error('Error creating YouTube player:', error);
+          if (this.onPlayerErrorCallback) {
+            this.onPlayerErrorCallback(`Failed to create player: ${error.message}`);
+          }
+          reject(error);
+        }
       });
-    });
+    } catch (error) {
+      console.error('Error in createPlayer:', error);
+      if (this.onPlayerErrorCallback) {
+        this.onPlayerErrorCallback(`Failed to initialize player: ${error.message}`);
+      }
+      throw error;
+    }
+  }
+
+  private getErrorMessage(errorCode: number): string {
+    const errorMessages: { [key: number]: string } = {
+      2: 'Invalid video ID - The video may not exist',
+      5: 'HTML5 player error - Try refreshing the page',
+      100: 'Video not found or is private',
+      101: 'Video cannot be embedded - Try a different video',
+      150: 'Video cannot be embedded - Try a different video',
+    };
+    
+    return errorMessages[errorCode] || `Unknown player error (${errorCode})`;
+  }
+
+  destroyPlayer() {
+    if (this.progressInterval) {
+      clearInterval(this.progressInterval);
+      this.progressInterval = undefined;
+    }
+
+    if (this.player && typeof this.player.destroy === 'function') {
+      try {
+        console.log('Destroying YouTube player');
+        this.player.destroy();
+        this.player = null;
+      } catch (error) {
+        console.warn('Error destroying player:', error);
+      }
+    }
   }
 
   private onPlayerReady(event: any) {
@@ -230,8 +352,13 @@ export class YouTubeService {
   }
 
   private startSessionTracking() {
+    // Clear any existing interval
+    if (this.progressInterval) {
+      clearInterval(this.progressInterval);
+    }
+
     // Track progress every second
-    setInterval(() => {
+    this.progressInterval = setInterval(() => {
       if (this.player && this.player.getPlayerState() === window.YT.PlayerState.PLAYING) {
         const currentTime = this.player.getCurrentTime();
         const duration = this.player.getDuration();
@@ -519,24 +646,38 @@ export class YouTubeService {
 
   // Public methods for controlling the player
   play() {
-    this.player?.playVideo();
+    if (this.player && this.player.playVideo) {
+      this.player.playVideo();
+    }
   }
 
   pause() {
-    this.player?.pauseVideo();
+    if (this.player && this.player.pauseVideo) {
+      this.player.pauseVideo();
+    }
   }
 
   seekTo(seconds: number) {
-    this.player?.seekTo(seconds);
-    this.trackInteraction('seek', {
-      from: this.player?.getCurrentTime() || 0,
-      to: seconds,
-      timestamp: Date.now(),
-    });
+    if (this.player && this.player.seekTo) {
+      this.player.seekTo(seconds, true);
+      this.trackInteraction('seek', {
+        from: this.player.getCurrentTime() || 0,
+        to: seconds,
+        timestamp: Date.now(),
+      });
+    }
   }
 
   setPlaybackRate(rate: number) {
-    this.player?.setPlaybackRate(rate);
+    if (this.player && this.player.setPlaybackRate) {
+      this.player.setPlaybackRate(rate);
+    }
+  }
+
+  setVolume(volume: number) {
+    if (this.player && this.player.setVolume) {
+      this.player.setVolume(volume);
+    }
   }
 
   getCurrentTime(): number {
@@ -553,6 +694,10 @@ export class YouTubeService {
 
   getPlayerState(): number {
     return this.player?.getPlayerState() || -1;
+  }
+
+  isReady(): boolean {
+    return this.player !== null && typeof this.player.getPlayerState === 'function';
   }
 
   getAnalytics(): YouTubeAnalytics {

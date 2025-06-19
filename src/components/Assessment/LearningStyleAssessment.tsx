@@ -38,22 +38,22 @@ const assessmentQuestions = [
   },
   {
     id: 'q4',
-    question: 'What\'s your current experience level with programming?',
+    question: 'What\'s your current experience level with technology and computers?',
     options: [
-      { text: 'Complete beginner', level: 'beginner', weight: 1 },
-      { text: 'Some basic knowledge', level: 'beginner', weight: 1 },
-      { text: 'Intermediate understanding', level: 'intermediate', weight: 1 },
-      { text: 'Advanced experience', level: 'advanced', weight: 1 },
+      { text: 'Complete beginner - I want to learn the basics', level: 'beginner', weight: 1 },
+      { text: 'Some basic knowledge - I know a little', level: 'beginner', weight: 1 },
+      { text: 'Intermediate understanding - I\'m comfortable with basics', level: 'intermediate', weight: 1 },
+      { text: 'Advanced experience - I want to deepen my knowledge', level: 'advanced', weight: 1 },
     ],
   },
   {
     id: 'q5',
-    question: 'Which programming concepts are you most interested in?',
+    question: 'Which topics are you most interested in learning about?',
     options: [
-      { text: 'Web Development (HTML, CSS, JavaScript)', subjects: ['JavaScript', 'Web Development'], weight: 1 },
-      { text: 'Frontend Frameworks (React, Vue, Angular)', subjects: ['React', 'Frontend Development'], weight: 1 },
-      { text: 'Backend Development (Node.js, Python, APIs)', subjects: ['Backend Development', 'APIs'], weight: 1 },
-      { text: 'Computer Science Fundamentals', subjects: ['Algorithms', 'Computer Science'], weight: 1 },
+      { text: 'Computer Fundamentals & How Technology Works', subjects: ['Computer Fundamentals', 'Computer Science', 'Technology'], weight: 1 },
+      { text: 'Programming & Software Development', subjects: ['JavaScript', 'Programming Fundamentals', 'Python'], weight: 1 },
+      { text: 'Web Development & Creating Websites', subjects: ['Web Development', 'HTML', 'CSS', 'JavaScript'], weight: 1 },
+      { text: 'All of the above - I want a comprehensive foundation', subjects: ['Computer Fundamentals', 'JavaScript', 'Web Development', 'Programming Fundamentals'], weight: 1 },
     ],
   },
 ];
@@ -91,7 +91,7 @@ export function LearningStyleAssessment({ onComplete }: AssessmentProps) {
   const calculateResults = () => {
     const styles = { visual: 0, auditory: 0, kinesthetic: 0, reading: 0 };
     let level = 'beginner';
-    let subjects = ['JavaScript', 'Web Development'];
+    let subjects = ['Computer Fundamentals', 'JavaScript'];
 
     Object.values(answers).forEach((answer: any) => {
       if (answer.style) {
@@ -117,6 +117,7 @@ export function LearningStyleAssessment({ onComplete }: AssessmentProps) {
       subjects,
     };
 
+    console.log('Assessment results:', results);
     onComplete(results);
   };
 
