@@ -3,7 +3,9 @@ class ApiService {
   private baseURL: string;
 
   constructor() {
-    this.baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+    // Use Railway URL by default, fallback to localhost for development
+    this.baseURL = import.meta.env.VITE_API_BASE_URL || 
+                   'https://personalized-video-learning-path-production.up.railway.app';
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -59,14 +61,21 @@ class ApiService {
     return this.request(`/api/recommendations/user/${userId}/analytics?timeframe=${timeframe}`);
   }
 
-  // Test backend connection
+  // Test backend connection with timeout
   async testConnection() {
     try {
-      const response = await this.request('/');
-      console.log('Backend connection successful:', response);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+      
+      const response = await this.request('/', {
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      console.log('✅ Backend connection successful:', response);
       return { success: true, data: response };
     } catch (error) {
-      console.error('Backend connection failed:', error);
+      console.log('❌ Backend connection failed, using demo mode:', error.message);
       return { success: false, error: error.message };
     }
   }
